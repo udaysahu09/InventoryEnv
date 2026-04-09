@@ -18,6 +18,7 @@ COPY models.py .
 COPY environment.py .
 COPY app.py .
 COPY openenv.yaml .
+COPY index.html .
 
 # Expose port
 EXPOSE 7860
