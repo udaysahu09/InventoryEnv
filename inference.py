@@ -1,28 +1,84 @@
 import os
 import json
 import requests
-from openai import OpenAI
+from dotenv import load_dotenv
 from models import TaskType, InventoryAction
+
+# Load environment variables from .env file
+load_dotenv()
+
+
+def smart_inventory_decision(state_dict):
+    """
+    Smart inventory management logic without LLM.
+    Makes intelligent ordering decisions based on warehouse state.
+    """
+    stock_levels = state_dict.get('stock_levels', [50])
+    pending_orders = state_dict.get('pending_orders', [0])
+    warehouse_capacity = state_dict.get('warehouse_capacity', 200)
+    warehouse_used = state_dict.get('warehouse_used', 50)
+    total_fulfilled = state_dict.get('total_fulfilled', 0)
+    total_demand = state_dict.get('total_demand', 0)
+    current_day = state_dict.get('current_day', 0)
+    
+    stock = stock_levels[0] if stock_levels else 0
+    pending = pending_orders[0] if pending_orders else 0
+    
+    # Calculate metrics
+    available_capacity = warehouse_capacity - warehouse_used
+    fulfillment_rate = total_fulfilled / max(total_demand, 1)
+    
+    # Decision logic
+    order_qty = 0
+    
+    # Rule 1: Critical stock - order immediately
+    if stock < 10:
+        order_qty = min(100, available_capacity)
+    
+    # Rule 2: Low stock with pending orders
+    elif stock < 20 and pending > 5:
+        order_qty = min(80, available_capacity)
+    
+    # Rule 3: Moderate stock but high pending
+    elif stock < 30 and pending > 10:
+        order_qty = min(60, available_capacity)
+    
+    # Rule 4: Preventive ordering (maintain 30-50 stock)
+    elif stock < 30 and available_capacity > 40:
+        order_qty = min(50, available_capacity)
+    
+    # Rule 5: Low fulfillment rate - stock up
+    elif fulfillment_rate < 0.8 and stock < 40:
+        order_qty = min(70, available_capacity)
+    
+    # Rule 6: Good stock, maintain status
+    else:
+        order_qty = 0
+    
+    return {"order_quantities": [int(order_qty)]}
 
 
 def main():
-    """Run inference on InventoryEnv with OpenAI LLM."""
+    """Run InventoryEnv with smart inventory management."""
     
     # Fetch configuration from environment
     api_base_url = os.environ.get("API_BASE_URL", "http://localhost:7860")
-    model_name = os.environ.get("MODEL_NAME", "gpt-3.5-turbo")
-    hf_token = os.environ.get("HF_TOKEN")
     
-    # Initialize OpenAI client
-    client = OpenAI(
-        api_key=hf_token if hf_token else "dummy-key",
-        base_url=api_base_url if hf_token else None,
-    )
+    print("=" * 70)
+    print("🚀 InventoryEnv - Reinforcement Learning Environment")
+    print("=" * 70)
+    print(f"📍 API URL: {api_base_url}")
+    print(f"🤖 Strategy: Smart Inventory Management (No LLM Required)")
+    print("=" * 70)
+    print()
     
     tasks = [TaskType.EASY, TaskType.MEDIUM, TaskType.HARD]
+    results = {}
     
     for task in tasks:
-        print(f"[START] Task: {task.value}")
+        print(f"\n{'='*70}")
+        print(f"📦 TASK: {task.value.upper()}")
+        print(f"{'='*70}\n")
         
         # Reset environment
         reset_payload = {"task": task.value}
@@ -34,7 +90,7 @@ def main():
             )
             reset_response.raise_for_status()
         except requests.RequestException as e:
-            print(f"[ERROR] Failed to reset environment: {e}")
+            print(f"❌ [ERROR] Failed to reset environment: {e}")
             continue
         
         reset_data = reset_response.json()
@@ -42,70 +98,27 @@ def main():
         
         max_steps = 100
         final_score = 0.0
+        total_fulfilled = 0
+        total_demand = 0
+        total_revenue = 0
+        
+        print(f"{'Day':<6} {'Stock':<8} {'Pending':<10} {'Fulfilled':<12} {'Revenue':<12} {'Action':<15}")
+        print("-" * 70)
         
         for step in range(1, max_steps + 1):
-            # Prepare state for LLM
             state_dict = observation
             
-            # Create LLM prompt
-            system_prompt = """You are an expert supply chain manager. Given the current warehouse state,
-            decide how many units to order for each product to maximize profit and fulfill customer orders.
-            Return ONLY a JSON object with key 'order_quantities' containing a list of integers."""
+            # Get smart decision
+            action_dict = smart_inventory_decision(state_dict)
             
-            user_prompt = f"""Current warehouse state:
-            - Day: {state_dict.get('current_day', 0)}
-            - Stock levels: {state_dict.get('stock_levels', [])}
-            - Pending orders: {state_dict.get('pending_orders', [])}
-            - Warehouse capacity: {state_dict.get('warehouse_capacity', 0)}
-            - Warehouse used: {state_dict.get('warehouse_used', 0)}
-            - Total fulfilled: {state_dict.get('total_fulfilled', 0)} / {state_dict.get('total_demand', 0)}
+            current_day = state_dict.get('current_day', 0)
+            stock = state_dict.get('stock_levels', [0])[0]
+            pending = state_dict.get('pending_orders', [0])[0]
+            fulfilled = state_dict.get('total_fulfilled', 0)
+            revenue = state_dict.get('current_balance', 0)
+            order = action_dict['order_quantities'][0]
             
-            Decide order quantities for each product (non-negative integers only)."""
-            
-            try:
-                # Call LLM
-                response = client.chat.completions.create(
-                    model=model_name,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    temperature=0.7,
-                    max_tokens=100,
-                )
-                
-                # Parse LLM response
-                llm_output = response.choices[0].message.content.strip()
-                
-                # Extract JSON from response
-                try:
-                    action_data = json.loads(llm_output)
-                except json.JSONDecodeError:
-                    # Fallback: extract JSON from text
-                    import re
-                    json_match = re.search(r'\{.*\}', llm_output, re.DOTALL)
-                    if json_match:
-                        action_data = json.loads(json_match.group())
-                    else:
-                        action_data = {"order_quantities": [0] * len(state_dict.get('stock_levels', []))}
-                
-                # Ensure action has correct format
-                if "order_quantities" not in action_data:
-                    action_data["order_quantities"] = [0] * len(state_dict.get('stock_levels', []))
-                
-                # Clamp to non-negative integers
-                action_data["order_quantities"] = [
-                    max(0, int(q)) for q in action_data["order_quantities"]
-                ]
-                
-            except Exception as e:
-                # Fallback action: no orders
-                action_data = {"order_quantities": [0] * len(state_dict.get('stock_levels', []))}
-            
-            action_dict = action_data
-            
-            # Log step
-            print(f"[STEP] State: {state_dict} | Action: {action_dict}")
+            print(f"{current_day:<6} {stock:<8} {pending:<10} {fulfilled:<12} ${revenue:<11.2f} Order: {order}")
             
             # Execute step
             step_payload = {"action": action_dict}
@@ -117,7 +130,7 @@ def main():
                 )
                 step_response.raise_for_status()
             except requests.RequestException as e:
-                print(f"[ERROR] Failed to execute step: {e}")
+                print(f"❌ [ERROR] Failed to execute step: {e}")
                 break
             
             step_data = step_response.json()
@@ -126,12 +139,45 @@ def main():
             done = step_data.get("done", False)
             
             final_score = reward.get("reward", 0.0)
+            total_fulfilled = observation.get('total_fulfilled', 0)
+            total_demand = observation.get('total_demand', 0)
+            total_revenue = observation.get('current_balance', 0)
             
             if done:
                 break
         
-        print(f"[END] Task: {task.value} | Final Score: {round(final_score, 4)}")
+        # Calculate metrics
+        fulfillment_rate = (total_fulfilled / max(total_demand, 1)) * 100
+        
+        print("-" * 70)
+        print(f"\n✅ TASK COMPLETE: {task.value.upper()}")
+        print(f"  📊 Final Score: {round(final_score, 2)}")
+        print(f"  📦 Total Fulfilled: {total_fulfilled}/{total_demand} ({fulfillment_rate:.1f}%)")
+        print(f"  💰 Total Revenue: ${total_revenue:.2f}")
+        print(f"  ⏱️  Days Completed: {current_day}")
+        
+        results[task.value] = {
+            "score": round(final_score, 2),
+            "fulfilled": f"{total_fulfilled}/{total_demand}",
+            "fulfillment_rate": f"{fulfillment_rate:.1f}%",
+            "revenue": f"${total_revenue:.2f}",
+            "days": current_day
+        }
+    
+    # Summary
+    print(f"\n\n{'='*70}")
+    print("📋 SUMMARY - ALL TASKS")
+    print(f"{'='*70}\n")
+    
+    for task_name, metrics in results.items():
+        print(f"🎯 {task_name.upper()}")
+        for key, value in metrics.items():
+            print(f"   • {key.replace('_', ' ').title()}: {value}")
         print()
+    
+    print("=" * 70)
+    print("✨ InventoryEnv Inference Complete!")
+    print("=" * 70)
 
 
 if __name__ == "__main__":
