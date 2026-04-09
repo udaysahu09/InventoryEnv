@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 from models import (
     InventoryObservation,
@@ -15,15 +16,12 @@ from environment import InventoryEnv
 # Global environment instance
 env: InventoryEnv = None
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context for FastAPI app."""
     global env
     env = InventoryEnv(task=TaskType.EASY)
     yield
-    # Cleanup if needed
-
 
 app = FastAPI(
     title="InventoryEnv API",
@@ -32,28 +30,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-
-@app.get("/", status_code=200)
-async def root():
-    """Health check endpoint."""
-    return {
-        "status": "ok",
-        "message": "InventoryEnv API is running",
-        "version": "1.0.0",
-    }
-
+@app.get("/", include_in_schema=False)
+async def serve_frontend():
+    """Serve the HTML frontend."""
+    return FileResponse("index.html")
 
 @app.post("/reset")
 async def reset(request: ResetRequest):
-    """
-    Reset the environment.
-    
-    Parameters:
-        - task: TaskType (easy, medium, hard)
-    
-    Returns:
-        - observation: InventoryObservation
-    """
+    """Reset the environment."""
     global env
     try:
         env = InventoryEnv(task=request.task)
@@ -65,24 +49,12 @@ async def reset(request: ResetRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.post("/step")
 async def step(request: StepRequest):
-    """
-    Execute one step in the environment.
-    
-    Parameters:
-        - action: InventoryAction with order quantities
-    
-    Returns:
-        - observation: InventoryObservation
-        - reward: RewardSchema
-        - done: bool
-    """
+    """Execute one step in the environment."""
     global env
     if env is None:
         raise HTTPException(status_code=400, detail="Environment not initialized. Call /reset first.")
-
     try:
         observation, reward, done = env.step(request.action)
         return {
@@ -93,21 +65,12 @@ async def step(request: StepRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.get("/state")
 async def state():
-    """
-    Get the current environment state.
-    
-    Returns:
-        - observation: InventoryObservation
-        - reward: RewardSchema (from last step)
-        - done: bool
-    """
+    """Get the current environment state."""
     global env
     if env is None:
         raise HTTPException(status_code=400, detail="Environment not initialized. Call /reset first.")
-
     try:
         state_data = env.state()
         return state_data
@@ -117,5 +80,4 @@ async def state():
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=7860)
