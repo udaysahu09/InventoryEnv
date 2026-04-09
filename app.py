@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+import os
 from contextlib import asynccontextmanager
 from models import (
     InventoryObservation,
@@ -30,10 +31,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Serve index.html
 @app.get("/", include_in_schema=False)
-async def serve_frontend():
-    """Serve the HTML frontend."""
-    return FileResponse("index.html")
+async def serve_index():
+    """Serve the HTML UI."""
+    if os.path.exists("index.html"):
+        return FileResponse("index.html", media_type="text/html")
+    return {"error": "index.html not found"}
 
 @app.post("/reset")
 async def reset(request: ResetRequest):
@@ -77,6 +81,9 @@ async def state():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# Serve static files (CSS, JS, images)
+if os.path.exists("."):
+    app.mount("/static", StaticFiles(directory="."), name="static")
 
 if __name__ == "__main__":
     import uvicorn
