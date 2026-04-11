@@ -14,6 +14,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy all application files
+COPY models.py .
 COPY environment.py .
 COPY app.py .
 COPY openenv.yaml .
