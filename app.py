@@ -3,11 +3,10 @@ InventoryEnv FastAPI Application
 Complete OpenEnv compliant API for Meta Scaler Hackathon Round 1
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body
 from contextlib import asynccontextmanager
 from pydantic import BaseModel, Field
-from typing import List, Optional
-from enum import Enum
+from typing import Optional
 import logging
 
 from models import TaskType, InventoryObservation, InventoryAction, RewardSchema
@@ -63,6 +62,7 @@ app = FastAPI(
 
 @app.get("/")
 async def health_check():
+    """Health check endpoint"""
     return {
         "status": "ok",
         "message": "InventoryEnv API is running",
@@ -71,13 +71,15 @@ async def health_check():
 
 
 @app.post("/reset")
-async def reset(request: ResetRequest):
+async def reset(request: ResetRequest = Body(default=ResetRequest())):
+    """Reset the environment to initial state"""
     global env
     try:
         task = request.get_task()
         logger.info(f"Resetting environment with task: {task.value}")
         env = InventoryEnv(task=task)
         observation = env.reset()
+        
         return {
             "observation": observation.model_dump(),
             "message": f"Environment reset with task: {task.value}",
@@ -89,6 +91,7 @@ async def reset(request: ResetRequest):
 
 @app.post("/step")
 async def step(request: StepRequest):
+    """Execute one step in the environment"""
     global env
     if env is None:
         raise HTTPException(status_code=400, detail="Environment not initialized. Call /reset first.")
@@ -106,6 +109,7 @@ async def step(request: StepRequest):
 
 @app.get("/state")
 async def state():
+    """Get the current environment state"""
     global env
     if env is None:
         raise HTTPException(status_code=400, detail="Environment not initialized. Call /reset first.")
