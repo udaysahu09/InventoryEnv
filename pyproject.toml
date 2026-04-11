@@ -26,6 +26,9 @@ dependencies = [
     "pydantic>=2.5.0",
     "pydantic-core>=2.14.0",
 ]
+[project.scripts]
+server = "app:app"
+inventoryenv-server = "app:main"
 
 [project.optional-dependencies]
 dev = [
