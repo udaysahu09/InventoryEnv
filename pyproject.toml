@@ -29,7 +29,7 @@ dependencies = [
 ]
 
 [project.scripts]
-inventoryenv-server = "server.app:main"
+server = "server.app:main"
 
 [project.optional-dependencies]
 dev = [
