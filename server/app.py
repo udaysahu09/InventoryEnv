@@ -121,6 +121,11 @@ async def state():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for the application"""
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=7860, log_level="info")
+
+
+if __name__ == "__main__":
+    main()
