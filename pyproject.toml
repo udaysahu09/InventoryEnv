@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "InventoryEnv"
+version = "1.0.0"
+description = "OpenEnv API for B2B Supply Chain & Inventory Management"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    {name = "Meta Scaler Hackathon Participant", email = "participant@metascaler.ai"}
+]
+keywords = ["supply-chain", "inventory-management", "reinforcement-learning", "b2b", "openenv"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "pydantic>=2.5.0",
+    "pydantic-core>=2.14.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "httpx>=0.25.0",
+]
+
+[project.urls]
+Homepage = "https://huggingface.co/spaces/udaysahu09/InventoryEnv"
+Repository = "https://github.com/udaysahu09/InventoryEnv"
+
+[tool.setuptools]
+packages = [""]
+
+[tool.setuptools.package-data]
+InventoryEnv = ["openenv.yaml"]
