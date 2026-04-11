@@ -25,10 +25,11 @@ dependencies = [
     "uvicorn[standard]>=0.24.0",
     "pydantic>=2.5.0",
     "pydantic-core>=2.14.0",
+    "openenv-core>=0.2.0",
 ]
+
 [project.scripts]
-server = "app:app"
-inventoryenv-server = "app:main"
+inventoryenv-server = "server.app:app"
 
 [project.optional-dependencies]
 dev = [
@@ -42,7 +43,7 @@ Homepage = "https://huggingface.co/spaces/udaysahu09/InventoryEnv"
 Repository = "https://github.com/udaysahu09/InventoryEnv"
 
 [tool.setuptools]
-packages = [""]
+packages = ["server"]
 
 [tool.setuptools.package-data]
-InventoryEnv = ["openenv.yaml"]
+server = ["*.yaml"]
