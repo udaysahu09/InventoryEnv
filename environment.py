@@ -105,7 +105,7 @@ class InventoryEnv:
 
         # State variables
         self.current_day = 0
-        self.stock_levels = [50] * self.num_products  # Start with 50 units per product
+        self.stock_levels = [50] * self.num_products
         self.pending_orders = [0] * self.num_products
         self.total_fulfilled = 0
         self.total_demand = 0
@@ -281,7 +281,7 @@ class InventoryEnv:
 
         # Out-of-stock penalty
         oos_count = sum(1 for p in self.pending_orders if p > 0)
-        oos_penalty = (oos_count / self.num_products) * 0.2  # Max 0.2 penalty
+        oos_penalty = (oos_count / self.num_products) * 0.2
 
         # Overstock penalty (Medium & Hard tasks)
         warehouse_used = sum(self.stock_levels)
@@ -293,12 +293,10 @@ class InventoryEnv:
         # Base reward from fulfillment
         fulfillment_reward = fulfilled_percentage / 100.0
 
-        # Penalize for unfulfilled and storage costs (balance sheet)
         # For Hard task, also consider profit
         if self.task == TaskType.HARD:
-            # Profit-based reward
             profit = self.current_balance
-            profit_reward = min(1.0, max(0.0, profit / 500.0))  # Normalize to 500 as baseline
+            profit_reward = min(1.0, max(0.0, profit / 500.0))
             reward = (fulfillment_reward * 0.6 + profit_reward * 0.4)
         else:
             reward = fulfillment_reward
@@ -312,7 +310,6 @@ class InventoryEnv:
         elif reward >= 1.0:
             reward = 0.99
         else:
-            # Additional safeguard for floating-point precision
             if reward < 0.001:
                 reward = 0.01
             elif reward > 0.999:
