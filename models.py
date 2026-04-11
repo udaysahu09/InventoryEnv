@@ -1,5 +1,10 @@
+"""
+Pydantic Models for InventoryEnv
+This file contains all data models to avoid circular imports
+"""
+
 from pydantic import BaseModel, Field
-from typing import List, Dict
+from typing import List
 from enum import Enum
 
 
@@ -11,10 +16,7 @@ class TaskType(str, Enum):
 
 
 class InventoryObservation(BaseModel):
-    """
-    Observation schema for the InventoryEnv.
-    Represents the current state of the warehouse.
-    """
+    """Observation schema for the InventoryEnv"""
     current_day: int = Field(..., description="Current simulation day (0 to max_days)")
     stock_levels: List[int] = Field(..., description="Current stock level for each product")
     warehouse_capacity: int = Field(..., description="Total warehouse capacity")
@@ -42,14 +44,8 @@ class InventoryObservation(BaseModel):
 
 
 class InventoryAction(BaseModel):
-    """
-    Action schema for the InventoryEnv.
-    Represents the quantity to order for each product.
-    """
-    order_quantities: List[int] = Field(
-        ...,
-        description="Quantity to order for each product. Negative values not allowed."
-    )
+    """Action schema for the InventoryEnv"""
+    order_quantities: List[int] = Field(..., description="Quantity to order for each product")
 
     class Config:
         json_schema_extra = {
@@ -60,10 +56,7 @@ class InventoryAction(BaseModel):
 
 
 class RewardSchema(BaseModel):
-    """
-    Reward schema for the InventoryEnv.
-    Returns normalized reward and detailed breakdown.
-    """
+    """Reward schema for the InventoryEnv"""
     reward: float = Field(..., description="Normalized reward strictly between 0.0 and 1.0 (exclusive)", gt=0.0, lt=1.0)
     fulfilled_percentage: float = Field(..., description="Percentage of orders fulfilled (0.0 to 100.0)")
     oos_penalty: float = Field(..., description="Out-of-stock penalty applied")
@@ -84,30 +77,3 @@ class RewardSchema(BaseModel):
                 "done": False
             }
         }
-
-
-class ResetRequest(BaseModel):
-    """Request schema for reset endpoint - OpenEnv standard format"""
-    input: dict = Field(default_factory=dict, description="Input parameters including task")
-    
-    def get_task(self) -> TaskType:
-        """Extract task from input dict."""
-        if isinstance(self.input, dict):
-            task_str = self.input.get("task", "easy")
-            try:
-                return TaskType(task_str)
-            except (ValueError, KeyError):
-                return TaskType.EASY
-        return TaskType.EASY
-
-
-class StepRequest(BaseModel):
-    """Request schema for step endpoint"""
-    action: InventoryAction = Field(..., description="Action to take in the environment")
-
-
-class StateResponse(BaseModel):
-    """Response schema for state endpoint"""
-    observation: InventoryObservation = Field(..., description="Current environment state")
-    reward: RewardSchema = Field(..., description="Last step reward")
-    done: bool = Field(..., description="Whether episode is finished")
