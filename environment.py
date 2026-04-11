@@ -1,6 +1,6 @@
 import random
 from typing import Tuple, Dict, List
-from models import InventoryObservation, InventoryAction, RewardSchema, TaskType
+from app import InventoryObservation, InventoryAction, RewardSchema, TaskType
 
 
 class InventoryEnv:
