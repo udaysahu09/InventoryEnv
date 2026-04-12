@@ -1,12 +1,8 @@
 """
 InventoryEnv inference script for Meta Scaler Phase 2.
 
-URL priority:
-  ENV_URL          → explicit environment server URL (set by hackathon validator)
-  OPENENV_BASE_URL → OpenEnv-standard env URL
-  http://localhost:7860 (fallback)
-
-API_BASE_URL / HF_TOKEN are used ONLY for the LLM, never for the env.
+The environment server always runs on localhost:7860 (same container).
+API_BASE_URL / HF_TOKEN are used ONLY for the LLM.
 """
 
 import os
@@ -23,25 +19,19 @@ logger = logging.getLogger(__name__)
 
 
 # ── URLs ──────────────────────────────────────────────────────────────────────
-def get_env_url() -> str:
-    """
-    Return the inventory-environment server URL.
-    Never use API_BASE_URL here — that points to the LLM router.
-    """
-    url = (
-        os.environ.get("ENV_URL")           # explicit env server
-        or os.environ.get("OPENENV_BASE_URL") # openenv standard
-        or "http://localhost:7860"           # local fallback
-    ).rstrip("/")
-    logger.info(f"[CONFIG] ENV server URL: {url}")
-    return url
+# The env server is ALWAYS localhost:7860 — it runs in the same container.
+# We intentionally do NOT read API_BASE_URL for the env URL because the
+# validator sets API_BASE_URL to the LLM router (https://litellm.sclr.ac),
+# which has no /reset or /step routes.
+ENV_URL = "http://localhost:7860"
+
+logger.info(f"[CONFIG] ENV server URL: {ENV_URL}")
 
 
 def get_llm_base_url() -> Optional[str]:
     return (os.environ.get("API_BASE_URL") or "").rstrip("/") or None
 
 
-ENV_URL     = get_env_url()
 LLM_URL     = get_llm_base_url()
 MODEL_NAME  = os.environ.get("MODEL_NAME", "")
 HF_TOKEN    = os.environ.get("HF_TOKEN", "")
