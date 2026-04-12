@@ -16,14 +16,18 @@ import requests
 
 
 def _base_url() -> str:
-    # Meta Scaler may set an env var; keep multiple fallbacks.
-    # Default assumes the server is running inside the same container on port 7860.
-    return (
+    # Try multiple environment variables that Meta Scaler might use
+    base_url = (
         os.environ.get("OPENENV_BASE_URL")
         or os.environ.get("API_BASE_URL")
         or os.environ.get("BASE_URL")
-        or "http://127.0.0.1:7860"
+        or os.environ.get("CONTAINER_URL")
+        or os.environ.get("SERVER_URL")
+        or "http://localhost:7860"  # Default for local testing
     ).rstrip("/")
+    
+    print(f"[DEBUG] Connecting to: {base_url}", file=sys.stderr)
+    return base_url
 
 
 BASE_URL = _base_url()
@@ -38,9 +42,11 @@ def wait_for_server(timeout_s: int = 30) -> None:
         try:
             r = requests.get(f"{BASE_URL}/", timeout=2)
             if r.status_code == 200:
+                print(f"[SUCCESS] Server responding at {BASE_URL}", file=sys.stderr)
                 return
         except Exception as e:
             last_err = e
+            print(f"[RETRY] Connection attempt failed: {e}", file=sys.stderr)
         time.sleep(1)
 
     raise RuntimeError(f"Server not reachable at {BASE_URL} within {timeout_s}s. Last error: {last_err}")
@@ -48,16 +54,30 @@ def wait_for_server(timeout_s: int = 30) -> None:
 
 def post_json(path: str, payload: Optional[Dict[str, Any]] = None, timeout: int = 10) -> Dict[str, Any]:
     url = f"{BASE_URL}{path}"
-    r = requests.post(url, json=payload, timeout=timeout)
-    r.raise_for_status()
-    return r.json()
+    try:
+        r = requests.post(url, json=payload, timeout=timeout)
+        r.raise_for_status()
+        return r.json()
+    except requests.exceptions.HTTPError as e:
+        print(f"[ERROR] POST {url} failed with {e.response.status_code}: {e.response.text}", file=sys.stderr)
+        raise
+    except Exception as e:
+        print(f"[ERROR] POST {url} failed: {e}", file=sys.stderr)
+        raise
 
 
 def get_json(path: str, timeout: int = 10) -> Dict[str, Any]:
     url = f"{BASE_URL}{path}"
-    r = requests.get(url, timeout=timeout)
-    r.raise_for_status()
-    return r.json()
+    try:
+        r = requests.get(url, timeout=timeout)
+        r.raise_for_status()
+        return r.json()
+    except requests.exceptions.HTTPError as e:
+        print(f"[ERROR] GET {url} failed with {e.response.status_code}: {e.response.text}", file=sys.stderr)
+        raise
+    except Exception as e:
+        print(f"[ERROR] GET {url} failed: {e}", file=sys.stderr)
+        raise
 
 
 def smoke_test() -> None:
@@ -69,41 +89,48 @@ def smoke_test() -> None:
     """
     wait_for_server(timeout_s=30)
 
-    # Reset (try with body first)
+    print("[TEST] Calling /reset with task=easy", file=sys.stderr)
+    # Reset with proper payload
     reset_data = post_json("/reset", {"task": "easy"}, timeout=10)
-    obs = reset_data.get("observation", reset_data)  # some APIs may return observation at top-level
+    obs = reset_data.get("observation", reset_data)
     if not isinstance(obs, dict):
         raise RuntimeError(f"/reset response has no observation dict: {reset_data}")
+    print("[TEST] /reset succeeded", file=sys.stderr)
 
+    print("[TEST] Calling /step with order_quantities=[0]", file=sys.stderr)
     # Step
     step_data = post_json("/step", {"action": {"order_quantities": [0]}}, timeout=10)
     if "observation" not in step_data or "reward" not in step_data:
         raise RuntimeError(f"/step response missing required fields: {step_data}")
+    print("[TEST] /step succeeded", file=sys.stderr)
 
-    # Optional: check reward is numeric and inside (0,1) if present
+    # Optional: check reward is numeric
     reward = step_data.get("reward", {})
     if isinstance(reward, dict) and "reward" in reward:
         val = reward["reward"]
         if not isinstance(val, (int, float)):
             raise RuntimeError(f"reward.reward is not a number: {val}")
-        # Don't hard-fail if equals 0 or 1 because some envs may produce boundary values early;
-        # if your grader requires strict bounds, your environment should ensure that.
-        # We'll just print it for debugging.
-    # Optional state call (non-fatal if not needed)
+        print(f"[TEST] reward value: {val}", file=sys.stderr)
+    
+    # Optional state call
     try:
+        print("[TEST] Calling /state", file=sys.stderr)
         _ = get_json("/state", timeout=10)
+        print("[TEST] /state succeeded", file=sys.stderr)
     except Exception:
         pass
 
 
 def main() -> int:
     try:
+        print(f"[START] InventoryEnv inference starting", file=sys.stderr)
         smoke_test()
         print("inference.py OK")
         return 0
     except Exception as e:
-        # Print error so participant logs show something useful
         print(f"inference.py FAILED: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
         return 1
 
 
