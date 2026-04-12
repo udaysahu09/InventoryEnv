@@ -3,11 +3,12 @@ InventoryEnv FastAPI Application
 Complete OpenEnv compliant API for Meta Scaler Hackathon Round 1
 """
 
+import os
+import logging
 from fastapi import FastAPI, HTTPException, Body
 from contextlib import asynccontextmanager
 from pydantic import BaseModel, Field
 from typing import Optional
-import logging
 
 from models import TaskType, InventoryObservation, InventoryAction, RewardSchema
 from environment import InventoryEnv
@@ -52,17 +53,23 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down InventoryEnv API")
 
 
+# Get root_path from environment variable (set by Meta Scaler proxy)
+root_path = os.environ.get("ROOT_PATH", "").rstrip("/")
+logger.info(f"[CONFIG] ROOT_PATH: {root_path if root_path else '(none)'}")
+
 app = FastAPI(
     title="InventoryEnv API",
     description="OpenEnv API for B2B Supply Chain & Inventory Management",
     version="1.0.0",
     lifespan=lifespan,
+    root_path=root_path,  # CRITICAL: Tell FastAPI about proxy prefix
 )
 
 
 @app.get("/")
 async def health_check():
     """Health check endpoint"""
+    logger.info("[ENDPOINT] GET /")
     return {
         "status": "ok",
         "message": "InventoryEnv API is running",
@@ -74,6 +81,7 @@ async def health_check():
 async def reset(request: ResetRequest = Body(default=ResetRequest())):
     """Reset the environment to initial state"""
     global env
+    logger.info(f"[ENDPOINT] POST /reset - task={request.task}")
     try:
         task = request.get_task()
         logger.info(f"Resetting environment with task: {task.value}")
@@ -85,7 +93,7 @@ async def reset(request: ResetRequest = Body(default=ResetRequest())):
             "message": f"Environment reset with task: {task.value}",
         }
     except Exception as e:
-        logger.error(f"Error during reset: {str(e)}")
+        logger.error(f"Error during reset: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -93,7 +101,9 @@ async def reset(request: ResetRequest = Body(default=ResetRequest())):
 async def step(request: StepRequest):
     """Execute one step in the environment"""
     global env
+    logger.info(f"[ENDPOINT] POST /step")
     if env is None:
+        logger.error("Environment not initialized")
         raise HTTPException(status_code=400, detail="Environment not initialized. Call /reset first.")
     try:
         observation, reward, done = env.step(request.action)
@@ -103,7 +113,7 @@ async def step(request: StepRequest):
             "done": done,
         }
     except Exception as e:
-        logger.error(f"Error during step: {str(e)}")
+        logger.error(f"Error during step: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -111,13 +121,15 @@ async def step(request: StepRequest):
 async def state():
     """Get the current environment state"""
     global env
+    logger.info(f"[ENDPOINT] GET /state")
     if env is None:
+        logger.error("Environment not initialized")
         raise HTTPException(status_code=400, detail="Environment not initialized. Call /reset first.")
     try:
         state_data = env.state()
         return state_data
     except Exception as e:
-        logger.error(f"Error retrieving state: {str(e)}")
+        logger.error(f"Error retrieving state: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
