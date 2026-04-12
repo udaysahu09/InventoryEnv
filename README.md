@@ -1,3 +1,31 @@
+---
+title: InventoryEnv
+emoji: 📦
+colorFrom: blue
+colorTo: purple
+sdk: docker
+sdk_version: "latest"
+app_file: app.py
+pinned: false
+---
+
+# InventoryEnv - B2B Supply Chain RL Environment
+
+Supply chain optimization using Reinforcement Learning for Meta Scaler Hackathon.
+
+## Features
+
+- 3 difficulty levels (easy, medium, hard)
+- FastAPI server on port 7860
+- Docker ready
+- Interactive API docs at /docs
+
+## Quick Start
+
+### Local
+
+```bash
+python -m uvicorn app:app --host 0.0.0.0 --port 7860
 # InventoryEnv: B2B Supply Chain & Inventory Management
 
 A production-ready OpenEnv environment for the Meta Scaler RL Hackathon. This environment simulates a B2B e-commerce warehouse where an RL agent manages inventory levels, fulfills customer orders, and optimizes warehouse capacity.
