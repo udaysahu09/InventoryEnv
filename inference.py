@@ -6,184 +6,151 @@ import os
 import sys
 import time
 from typing import Any, Dict, Optional
+import logging
 
 import requests
 
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(message)s',
+    stream=sys.stderr
+)
+logger = logging.getLogger(__name__)
 
-def _base_url() -> str:
+
+def get_base_url() -> str:
+    """Determine the correct base URL"""
+    
+    # Get from environment
     base_url = (
         os.environ.get("OPENENV_BASE_URL")
         or os.environ.get("API_BASE_URL")
         or os.environ.get("BASE_URL")
-        or os.environ.get("CONTAINER_URL")
         or "http://localhost:7860"
     ).rstrip("/")
     
-    print(f"[CONFIG] Using BASE_URL: {base_url}", file=sys.stderr)
+    logger.info(f"[CONFIG] Base URL from env: {base_url}")
     return base_url
 
 
-BASE_URL = _base_url()
+BASE_URL = get_base_url()
 
 
-def wait_for_server(timeout_s: int = 60) -> None:
-    """Wait until GET / returns HTTP 200 with retries."""
+def wait_for_server(timeout_s: int = 60) -> bool:
+    """Wait for server to be ready"""
     deadline = time.time() + timeout_s
-    attempt = 0
-    last_err: Optional[Exception] = None
-
+    
     while time.time() < deadline:
-        attempt += 1
         try:
-            print(f"[ATTEMPT {attempt}] Checking {BASE_URL}/", file=sys.stderr)
+            logger.info(f"[HEALTH CHECK] GET {BASE_URL}/")
             r = requests.get(f"{BASE_URL}/", timeout=5)
-            print(f"[RESPONSE] Status: {r.status_code}", file=sys.stderr)
             if r.status_code == 200:
-                print(f"[SUCCESS] Server ready", file=sys.stderr)
-                return
+                logger.info(f"[SUCCESS] Server is ready")
+                return True
         except Exception as e:
-            last_err = e
-            print(f"[ATTEMPT {attempt} FAILED] {type(e).__name__}: {e}", file=sys.stderr)
+            logger.info(f"[RETRY] {type(e).__name__}: {e}")
         
         time.sleep(2)
-
-    raise RuntimeError(
-        f"Server {BASE_URL} not ready after {timeout_s}s. "
-        f"Last error: {last_err}"
-    )
-
-
-def post_json(
-    path: str,
-    payload: Optional[Dict[str, Any]] = None,
-    timeout: int = 15,
-    retries: int = 2
-) -> Dict[str, Any]:
-    """POST with retry logic."""
-    url = f"{BASE_URL}{path}"
-    last_err = None
     
-    for attempt in range(retries + 1):
-        try:
-            print(f"[POST {attempt+1}/{retries+1}] {url}", file=sys.stderr)
-            print(f"[PAYLOAD] {payload}", file=sys.stderr)
-            
-            r = requests.post(url, json=payload, timeout=timeout)
-            
-            print(f"[RESPONSE] Status: {r.status_code}", file=sys.stderr)
-            if r.status_code >= 400:
-                print(f"[ERROR] Response: {r.text}", file=sys.stderr)
-            
-            r.raise_for_status()
-            result = r.json()
-            print(f"[SUCCESS] Got response with keys: {list(result.keys())}", file=sys.stderr)
-            return result
-            
-        except requests.exceptions.Timeout as e:
-            last_err = e
-            print(f"[ATTEMPT {attempt+1}] Timeout: {e}", file=sys.stderr)
-            if attempt < retries:
-                time.sleep(2)
-        except requests.exceptions.ConnectionError as e:
-            last_err = e
-            print(f"[ATTEMPT {attempt+1}] Connection error: {e}", file=sys.stderr)
-            if attempt < retries:
-                time.sleep(2)
-        except requests.exceptions.HTTPError as e:
-            print(f"[HTTP ERROR {e.response.status_code}] {e.response.text}", file=sys.stderr)
-            raise
-        except Exception as e:
-            last_err = e
-            print(f"[ATTEMPT {attempt+1}] {type(e).__name__}: {e}", file=sys.stderr)
-            if attempt < retries:
-                time.sleep(2)
-    
-    raise RuntimeError(f"POST {url} failed after {retries+1} attempts. Last error: {last_err}")
-
-
-def get_json(path: str, timeout: int = 15, retries: int = 2) -> Dict[str, Any]:
-    """GET with retry logic."""
-    url = f"{BASE_URL}{path}"
-    last_err = None
-    
-    for attempt in range(retries + 1):
-        try:
-            print(f"[GET {attempt+1}/{retries+1}] {url}", file=sys.stderr)
-            r = requests.get(url, timeout=timeout)
-            
-            print(f"[RESPONSE] Status: {r.status_code}", file=sys.stderr)
-            if r.status_code >= 400:
-                print(f"[ERROR] Response: {r.text}", file=sys.stderr)
-            
-            r.raise_for_status()
-            result = r.json()
-            print(f"[SUCCESS] Got response with keys: {list(result.keys())}", file=sys.stderr)
-            return result
-            
-        except requests.exceptions.Timeout as e:
-            last_err = e
-            print(f"[ATTEMPT {attempt+1}] Timeout: {e}", file=sys.stderr)
-            if attempt < retries:
-                time.sleep(2)
-        except requests.exceptions.HTTPError as e:
-            print(f"[HTTP ERROR {e.response.status_code}] {e.response.text}", file=sys.stderr)
-            raise
-        except Exception as e:
-            last_err = e
-            print(f"[ATTEMPT {attempt+1}] {type(e).__name__}: {e}", file=sys.stderr)
-            if attempt < retries:
-                time.sleep(2)
-    
-    raise RuntimeError(f"GET {url} failed after {retries+1} attempts. Last error: {last_err}")
+    logger.error(f"[FAILED] Server not ready after {timeout_s}s")
+    return False
 
 
 def smoke_test() -> None:
-    """Smoke test the environment."""
-    wait_for_server(timeout_s=60)
-
-    print("[TEST] === RESET ===", file=sys.stderr)
-    reset_data = post_json("/reset", {"task": "easy"}, timeout=15, retries=2)
+    """Run smoke tests on all required endpoints"""
     
-    obs = reset_data.get("observation")
-    if not isinstance(obs, dict):
-        raise RuntimeError(f"Invalid /reset response: {reset_data}")
+    # Step 1: Wait for server
+    if not wait_for_server(timeout_s=60):
+        raise RuntimeError("Server initialization timeout")
     
-    print(f"[TEST] Got observation with keys: {list(obs.keys())}", file=sys.stderr)
-
-    print("[TEST] === STEP ===", file=sys.stderr)
-    step_data = post_json(
-        "/step",
-        {"action": {"order_quantities": [0]}},
-        timeout=15,
-        retries=2
-    )
-    
-    if "observation" not in step_data or "reward" not in step_data:
-        raise RuntimeError(f"Invalid /step response: {step_data}")
-    
-    print(f"[TEST] Step succeeded", file=sys.stderr)
-
-    print("[TEST] === STATE ===", file=sys.stderr)
+    # Step 2: Test /reset
+    logger.info(f"[TEST 1/3] POST /reset")
     try:
-        state_data = get_json("/state", timeout=15, retries=2)
-        print(f"[TEST] Got state with keys: {list(state_data.keys())}", file=sys.stderr)
+        r = requests.post(
+            f"{BASE_URL}/reset",
+            json={"task": "easy"},
+            timeout=15
+        )
+        logger.info(f"[RESPONSE] HTTP {r.status_code}")
+        
+        if r.status_code >= 400:
+            logger.error(f"[ERROR] {r.text}")
+            raise RuntimeError(f"POST /reset failed: HTTP {r.status_code}")
+        
+        reset_data = r.json()
+        if "observation" not in reset_data:
+            raise RuntimeError(f"Invalid response: missing 'observation'")
+        
+        logger.info(f"[SUCCESS] /reset returned observation")
+        
     except Exception as e:
-        print(f"[WARNING] /state call failed (non-fatal): {e}", file=sys.stderr)
+        logger.error(f"[FAILED] /reset test: {e}")
+        raise
+    
+    # Step 3: Test /step
+    logger.info(f"[TEST 2/3] POST /step")
+    try:
+        r = requests.post(
+            f"{BASE_URL}/step",
+            json={"action": {"order_quantities": [0]}},
+            timeout=15
+        )
+        logger.info(f"[RESPONSE] HTTP {r.status_code}")
+        
+        if r.status_code >= 400:
+            logger.error(f"[ERROR] {r.text}")
+            raise RuntimeError(f"POST /step failed: HTTP {r.status_code}")
+        
+        step_data = r.json()
+        if "observation" not in step_data or "reward" not in step_data:
+            raise RuntimeError(f"Invalid response: missing required fields")
+        
+        logger.info(f"[SUCCESS] /step returned observation and reward")
+        
+    except Exception as e:
+        logger.error(f"[FAILED] /step test: {e}")
+        raise
+    
+    # Step 4: Test /state
+    logger.info(f"[TEST 3/3] GET /state")
+    try:
+        r = requests.get(
+            f"{BASE_URL}/state",
+            timeout=15
+        )
+        logger.info(f"[RESPONSE] HTTP {r.status_code}")
+        
+        if r.status_code >= 400:
+            logger.error(f"[ERROR] {r.text}")
+            # /state is optional, don't fail
+            logger.warning(f"[WARNING] /state not available (non-fatal)")
+        else:
+            state_data = r.json()
+            logger.info(f"[SUCCESS] /state returned data")
+        
+    except Exception as e:
+        logger.warning(f"[WARNING] /state test failed: {e} (non-fatal)")
 
 
 def main() -> int:
+    """Main entry point"""
     try:
-        print("[START] InventoryEnv inference validation", file=sys.stderr)
+        logger.info(f"[START] InventoryEnv inference validation")
+        logger.info(f"[CONFIG] Connecting to: {BASE_URL}")
+        
         smoke_test()
-        print("[SUCCESS] All tests passed!", file=sys.stderr)
+        
+        logger.info(f"[SUCCESS] All tests passed!")
         print("inference.py OK")
         return 0
+        
     except Exception as e:
-        print(f"[FAILED] {type(e).__name__}: {e}", file=sys.stderr)
+        logger.error(f"[FAILED] {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc(file=sys.stderr)
         return 1
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())
